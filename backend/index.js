@@ -8,42 +8,43 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json());
 
+/**
+ * In-memory store
+ * Tracks orders, carts, discount codes, and configuration
+ */
 const dbStore = {
-
+  // Configuration: Every nth order gets a discount code
   nthOrderForDiscount: 3,
-
-  discountCodeCounter: 0,
-  discountCodes: {},
-  usedDiscountCodes: {},  
-
+  
+  // All orders placed
   orders: [],
-
+  
+  // Current shopping carts (userId -> cart)
   carts: {},
-
+  
+  // Discount codes available (codeId -> { code, isUsed, discountPercent })
+  discountCodes: {},
+  
+  // Track used discount codes (codeId -> true if used)
+  usedDiscountCodes: {},
+  
+  // Counter for discount code generation
+  discountCodeCounter: 0,
+  
+  // Sample products available in store
   products: [
-    { id: 1, name: "Laptop", price: 999.99 },
-    { id: 2, name: "Mouse", price: 29.99 },
-    { id: 3, name: "Keyboard", price: 79.99 },
-    { id: 4, name: "Monitor", price: 299.99 },
-    { id: 5, name: "Headphones", price: 149.99 },
+    { id: 1, name: 'Laptop', price: 999.99 },
+    { id: 2, name: 'Mouse', price: 29.99 },
+    { id: 3, name: 'Keyboard', price: 79.99 },
+    { id: 4, name: 'Monitor', price: 299.99 },
+    { id: 5, name: 'Headphones', price: 149.99 },
   ],
 };
 
-const getCart = (userId) => {
-  if (!dbStore.carts[userId]) {
-    dbStore.carts[userId] = {
-      userId,
-      items: [],
-      createdAt: new Date().toISOString(),
-    };
-  }
-  return dbStore.carts[userId];
-};
-
-function calculateCartTotal(items) {
-  return items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-}
-
+/**
+ * Generate a unique discount code
+ * Format: UNIBLOX-XXXX where XXXX is a number
+ */
 function generateDiscountCode() {
   dbStore.discountCodeCounter++;
   const codeId = dbStore.discountCodeCounter;
@@ -60,6 +61,9 @@ function generateDiscountCode() {
   return code;
 }
 
+/**
+ * Check if a discount code is valid and available for use
+ */
 function isValidDiscountCode(code) {
   for (const [, discountObj] of Object.entries(dbStore.discountCodes)) {
     if (discountObj.code === code && !discountObj.isUsed) {
@@ -69,6 +73,9 @@ function isValidDiscountCode(code) {
   return false;
 }
 
+/**
+ * Get discount code details
+ */
 function getDiscountCodeDetails(code) {
   for (const [, discountObj] of Object.entries(dbStore.discountCodes)) {
     if (discountObj.code === code) {
@@ -78,6 +85,9 @@ function getDiscountCodeDetails(code) {
   return null;
 }
 
+/**
+ * Mark a discount code as used
+ */
 function markDiscountCodeAsUsed(code) {
   for (const [, discountObj] of Object.entries(dbStore.discountCodes)) {
     if (discountObj.code === code) {
@@ -87,6 +97,10 @@ function markDiscountCodeAsUsed(code) {
   }
 }
 
+/**
+ * Check if a new discount code should be generated
+ * Generate one after every nth order
+ */
 function checkAndGenerateNewDiscountCode() {
   const orderCount = dbStore.orders.length;
   
@@ -100,47 +114,77 @@ function checkAndGenerateNewDiscountCode() {
   return null;
 }
 
-app.get("/api/products", (req, res) => {
+/**
+ * Get or create a cart for a user
+ */
+function getCart(userId) {
+  if (!dbStore.carts[userId]) {
+    dbStore.carts[userId] = {
+      userId,
+      items: [],
+      createdAt: new Date().toISOString(),
+    };
+  }
+  return dbStore.carts[userId];
+}
+
+/**
+ * Calculate cart total
+ */
+function calculateCartTotal(items) {
+  return items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+}
+
+/**
+ * GET /api/products
+ * Get all available products
+ */
+app.get('/api/products', (req, res) => {
   res.json({
     success: true,
     data: dbStore.products,
   });
 });
 
-app.post("/api/cart/:userId/add", (req, res) => {
+/**
+ * POST /api/cart/:userId/add
+ * Add item to cart
+ * Body: { productId: number, quantity: number }
+ */
+app.post('/api/cart/:userId/add', (req, res) => {
   const { userId } = req.params;
   const { productId, quantity } = req.body;
-
+  
   // Validation
   if (!userId || !productId || !quantity) {
     return res.status(400).json({
       success: false,
-      error: "Missing required fields: userId, productId, quantity",
+      error: 'Missing required fields: userId, productId, quantity',
     });
   }
-
+  
   if (quantity < 1) {
     return res.status(400).json({
       success: false,
-      error: "Quantity must be at least 1",
+      error: 'Quantity must be at least 1',
     });
   }
-
+  
   // Find product
-  const product = dbStore.products.find((p) => p.id === productId);
+  const product = dbStore.products.find(p => p.id === productId);
   if (!product) {
     return res.status(404).json({
       success: false,
-      error: "Product not found",
+      error: 'Product not found',
     });
   }
-
+  
   // Get or create cart
   const cart = getCart(userId);
-
+  
   // Check if product already in cart
-  const existingItem = cart.items.find((item) => item.id === productId);
-
+  const existingItem = cart.items.find(item => item.id === productId);
+  
   if (existingItem) {
     existingItem.quantity += quantity;
   } else {
@@ -151,9 +195,9 @@ app.post("/api/cart/:userId/add", (req, res) => {
       quantity,
     });
   }
-
+  
   const total = calculateCartTotal(cart.items);
-
+  
   res.json({
     success: true,
     message: `${product.name} added to cart`,
@@ -166,11 +210,15 @@ app.post("/api/cart/:userId/add", (req, res) => {
   });
 });
 
-app.get("/api/cart/:userId", (req, res) => {
+/**
+ * GET /api/cart/:userId
+ * Get user's cart
+ */
+app.get('/api/cart/:userId', (req, res) => {
   const { userId } = req.params;
   const cart = getCart(userId);
   const total = calculateCartTotal(cart.items);
-
+  
   res.json({
     success: true,
     data: {
@@ -182,19 +230,28 @@ app.get("/api/cart/:userId", (req, res) => {
   });
 });
 
-app.delete("/api/cart/:userId/clear", (req, res) => {
+/**
+ * DELETE /api/cart/:userId/clear
+ * Clear user's cart
+ */
+app.delete('/api/cart/:userId/clear', (req, res) => {
   const { userId } = req.params;
-
+  
   if (dbStore.carts[userId]) {
     dbStore.carts[userId].items = [];
   }
-
+  
   res.json({
     success: true,
-    message: "Cart cleared",
+    message: 'Cart cleared',
   });
 });
 
+/**
+ * POST /api/checkout
+ * Checkout and place order
+ * Body: { userId: string, discountCode?: string }
+ */
 app.post('/api/checkout', (req, res) => {
   const { userId, discountCode } = req.body;
   
@@ -282,8 +339,12 @@ app.post('/api/checkout', (req, res) => {
   });
 });
 
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
+/**
+ * GET /health
+ * Health check endpoint
+ */
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
 });
 
 app.listen(PORT, () => {
