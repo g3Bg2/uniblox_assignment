@@ -123,7 +123,9 @@ function App() {
       if (data.success) {
         setMessage(
           `Order placed! Order ID: ${data.order.orderId}. Total: $${data.order.total}${
-            data.newDiscountCodeGenerated ? ` New discount code available!` : ""
+            data.newDiscountCodeGenerated
+              ? ` | 🎉 New discount code available!`
+              : ""
           }`,
         );
         setMessageType("success");
