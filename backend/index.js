@@ -340,6 +340,83 @@ app.post('/api/checkout', (req, res) => {
 });
 
 /**
+ * POST /api/admin/discount-codes/generate
+ * Generate a new discount code (admin only)
+ * This would normally check if the nth order condition is satisfied
+ */
+app.post('/api/admin/discount-codes/generate', (req, res) => {
+  const orderCount = dbStore.orders.length;
+  
+  // Check if we should generate a discount code
+  if (orderCount > 0 && orderCount % dbStore.nthOrderForDiscount === 0) {
+    const code = generateDiscountCode();
+    return res.json({
+      success: true,
+      message: `Discount code generated after ${orderCount} orders`,
+      code,
+    });
+  }
+  
+  res.status(400).json({
+    success: false,
+    error: `Next discount code will be available after ${dbStore.nthOrderForDiscount} orders. Current orders: ${orderCount}`,
+  });
+});
+
+/**
+ * GET /api/admin/stats
+ * Get all statistics
+ */
+app.get('/api/admin/stats', (req, res) => {
+  // Calculate stats
+  const totalItemsPurchased = dbStore.orders.reduce((sum, order) => {
+    return sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0);
+  }, 0);
+  
+  const totalPurchaseAmount = dbStore.orders.reduce((sum, order) => sum + order.subtotal, 0);
+  
+  const totalDiscountAmount = dbStore.orders.reduce((sum, order) => sum + order.discountAmount, 0);
+  
+  const discountCodesUsed = Object.values(dbStore.discountCodes).map(dc => ({
+    code: dc.code,
+    isUsed: dc.isUsed,
+    discountPercent: dc.discountPercent,
+    createdAt: dc.createdAt,
+  }));
+  
+  const discountCodesAvailable = discountCodesUsed.filter(dc => !dc.isUsed);
+  
+  res.json({
+    success: true,
+    stats: {
+      totalOrders: dbStore.orders.length,
+      totalItemsPurchased,
+      totalPurchaseAmount: totalPurchaseAmount.toFixed(2),
+      totalDiscountAmount: totalDiscountAmount.toFixed(2),
+      discountCodes: {
+        available: discountCodesAvailable.length,
+        used: discountCodesUsed.filter(dc => dc.isUsed).length,
+        total: discountCodesUsed.length,
+        list: discountCodesUsed,
+      },
+      nthOrderForDiscount: dbStore.nthOrderForDiscount,
+    },
+  });
+});
+
+/**
+ * GET /api/admin/orders
+ * Get all orders
+ */
+app.get('/api/admin/orders', (req, res) => {
+  res.json({
+    success: true,
+    totalOrders: dbStore.orders.length,
+    orders: dbStore.orders,
+  });
+});
+
+/**
  * GET /health
  * Health check endpoint
  */
