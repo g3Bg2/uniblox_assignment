@@ -23,6 +23,9 @@ function App() {
   const userId = "user123";
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<Cart | null>(null);
+  const [discountCode, setDiscountCode] = useState("");
+  const [discountCodeInput, setDiscountCodeInput] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetchProducts();
@@ -87,6 +90,43 @@ function App() {
     }
   };
 
+  const handleCheckout = async () => {
+    if (!cart || cart.items.length === 0) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          discountCode: discountCode || undefined,
+        }),
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        setCart(null);
+        setDiscountCode("");
+        setDiscountCodeInput("");
+        fetchCart();
+      }
+    } catch (error) {
+      console.error("Error during checkout:", error);
+    }
+  };
+
+  const calculateDiscount = () => {
+    if (!cart || !discountCode) return 0;
+    return (parseFloat(String(cart.total)) * 10) / 100;
+  };
+
+  const finalTotal = cart
+    ? (parseFloat(String(cart.total)) - calculateDiscount()).toFixed(2)
+    : "0.00";
+
   return (
     <>
       <div className="min-h-screen bg-gray-50">
@@ -147,6 +187,65 @@ function App() {
                     </p>
                   </div>
                 ))}
+              </div>
+
+              {/* Discount Code Section */}
+              <div className="bg-gray-50 p-4 rounded mb-6">
+                <h3 className="font-semibold mb-2">Apply Discount Code</h3>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Enter discount code (e.g., DISCOUNT-0001)"
+                    value={discountCodeInput}
+                    onChange={(e) => setDiscountCodeInput(e.target.value)}
+                    className="flex-1 border px-3 py-2 rounded text-sm"
+                  />
+                  <button
+                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm font-medium"
+                  >
+                    Apply
+                  </button>
+                </div>
+                {discountCode && (
+                  <p className="text-green-600 text-sm mt-2">
+                    ✓ Discount code "{discountCode}" will be applied
+                  </p>
+                )}
+              </div>
+
+              {/* Price Summary */}
+              <div className="border-t pt-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Subtotal:</span>
+                  <span>${cart.total.toFixed(2)}</span>
+                </div>
+                {discountCode && (
+                  <div className="flex justify-between text-sm text-green-600">
+                    <span>Discount (10%):</span>
+                    <span>-${calculateDiscount().toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total:</span>
+                  <span className="text-blue-600">${finalTotal}</span>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={handleCheckout}
+                  disabled={loading}
+                  className="flex-1 bg-blue-600 text-white py-3 rounded hover:bg-blue-700 font-bold disabled:opacity-50"
+                >
+                  {loading ? "Processing..." : "Checkout"}
+                </button>
+                <button
+                  onClick={handleClearCart}
+                  className="flex-1 bg-gray-400 text-white py-3 rounded hover:bg-gray-500 font-bold"
+                >
+                  Clear Cart
+                </button>
               </div>
             </div>
           )}

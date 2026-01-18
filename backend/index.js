@@ -9,6 +9,15 @@ app.use(cors());
 app.use(express.json());
 
 const dbStore = {
+
+  nthOrderForDiscount: 3,
+
+  discountCodeCounter: 0,
+  discountCodes: {},
+  usedDiscountCodes: {},  
+
+  orders: [],
+
   carts: {},
 
   products: [
@@ -33,6 +42,62 @@ const getCart = (userId) => {
 
 function calculateCartTotal(items) {
   return items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+}
+
+function generateDiscountCode() {
+  dbStore.discountCodeCounter++;
+  const codeId = dbStore.discountCodeCounter;
+  const code = `UNIBLOX-${String(codeId).padStart(4, '0')}`;
+  
+  dbStore.discountCodes[codeId] = {
+    id: codeId,
+    code,
+    isUsed: false,
+    discountPercent: 10,
+    createdAt: new Date().toISOString(),
+  };
+  
+  return code;
+}
+
+function isValidDiscountCode(code) {
+  for (const [, discountObj] of Object.entries(dbStore.discountCodes)) {
+    if (discountObj.code === code && !discountObj.isUsed) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getDiscountCodeDetails(code) {
+  for (const [, discountObj] of Object.entries(dbStore.discountCodes)) {
+    if (discountObj.code === code) {
+      return discountObj;
+    }
+  }
+  return null;
+}
+
+function markDiscountCodeAsUsed(code) {
+  for (const [, discountObj] of Object.entries(dbStore.discountCodes)) {
+    if (discountObj.code === code) {
+      discountObj.isUsed = true;
+      break;
+    }
+  }
+}
+
+function checkAndGenerateNewDiscountCode() {
+  const orderCount = dbStore.orders.length;
+  
+  // If this is the nth order, generate a new discount code
+  if (orderCount > 0 && orderCount % dbStore.nthOrderForDiscount === 0) {
+    const code = generateDiscountCode();
+    console.log(`New discount code generated after order ${orderCount}: ${code}`);
+    return code;
+  }
+  
+  return null;
 }
 
 app.get("/api/products", (req, res) => {
@@ -127,6 +192,93 @@ app.delete("/api/cart/:userId/clear", (req, res) => {
   res.json({
     success: true,
     message: "Cart cleared",
+  });
+});
+
+app.post('/api/checkout', (req, res) => {
+  const { userId, discountCode } = req.body;
+  
+  // Validation
+  if (!userId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Missing required field: userId',
+    });
+  }
+  
+  const cart = getCart(userId);
+  
+  if (cart.items.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Cart is empty',
+    });
+  }
+  
+  let discountAmount = 0;
+  let discountPercent = 0;
+  let appliedDiscountCode = null;
+  
+  // Validate discount code if provided
+  if (discountCode) {
+    if (!isValidDiscountCode(discountCode)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or already used discount code',
+      });
+    }
+    
+    const discountDetails = getDiscountCodeDetails(discountCode);
+    discountPercent = discountDetails.discountPercent;
+    appliedDiscountCode = discountCode;
+  }
+  
+  // Calculate totals
+  const subtotal = calculateCartTotal(cart.items);
+  discountAmount = (subtotal * discountPercent) / 100;
+  const total = subtotal - discountAmount;
+  
+  // Create order
+  const order = {
+    orderId: `ORDER-${Date.now()}`,
+    userId,
+    items: [...cart.items],
+    subtotal,
+    discountCode: appliedDiscountCode,
+    discountPercent,
+    discountAmount,
+    total,
+    createdAt: new Date().toISOString(),
+  };
+  
+  // Store order
+  dbStore.orders.push(order);
+  
+  // Mark discount code as used
+  if (appliedDiscountCode) {
+    markDiscountCodeAsUsed(appliedDiscountCode);
+  }
+  
+  // Check if new discount code should be generated
+  const newDiscountCode = checkAndGenerateNewDiscountCode();
+  
+  // Clear cart
+  cart.items = [];
+  
+  res.json({
+    success: true,
+    message: 'Order placed successfully',
+    order: {
+      orderId: order.orderId,
+      userId,
+      itemCount: order.items.length,
+      subtotal: order.subtotal.toFixed(2),
+      discountCode: order.discountCode,
+      discountAmount: order.discountAmount.toFixed(2),
+      total: order.total.toFixed(2),
+      createdAt: order.createdAt,
+    },
+    newDiscountCodeGenerated: newDiscountCode,
   });
 });
 
