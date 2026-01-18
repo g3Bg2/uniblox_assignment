@@ -127,6 +127,13 @@ function App() {
     ? (parseFloat(String(cart.total)) - calculateDiscount()).toFixed(2)
     : "0.00";
 
+  const handleApplyDiscount = () => {
+    if (!discountCodeInput.trim()) {
+      return;
+    }
+    setDiscountCode(discountCodeInput);
+  };
+
   return (
     <>
       <div className="min-h-screen bg-gray-50">
@@ -201,6 +208,7 @@ function App() {
                     className="flex-1 border px-3 py-2 rounded text-sm"
                   />
                   <button
+                    onClick={handleApplyDiscount}
                     className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm font-medium"
                   >
                     Apply
